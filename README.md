@@ -322,11 +322,15 @@ curl "http://localhost:5000/api/public/articles/search?fakeid=YOUR_FAKEID&query=
 
 `GET /api/rss/category/{category_id}` — 获取指定分类的聚合 RSS 2.0 订阅源
 
+`GET /api/rss/category/{category_id}/today` — 导出指定分类今日更新文章，按公众号分组返回 JSON
+
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `fakeid` | string（路径） | 是 | 公众号 FakeID |
 | `category_id` | int（路径） | 是 | 分类 ID |
 | `limit` | int（查询） | 否 | 返回文章数量上限 |
+| `date` | string（查询） | 否 | 导出目标日期，格式 `YYYY-MM-DD`，默认按时区取今天 |
+| `timezone` | string（查询） | 否 | 日期过滤时区，默认 `Asia/Shanghai` |
 
 使用方式：
 
@@ -348,6 +352,9 @@ curl "http://localhost:5000/api/rss/MzA1MjM1ODk2MA=="
 
 # 5. 获取分类聚合 RSS 源
 curl "http://localhost:5000/api/rss/category/1"
+
+# 6. 导出分类今日文章，按公众号名称分组
+curl "http://localhost:5000/api/rss/category/1/today"
 ```
 
 也可以通过管理面板的 **RSS 订阅** 页面可视化管理，搜索公众号一键订阅并复制 RSS 地址；在 **分类管理** 页面创建分类后，每个分类都会生成独立的聚合 RSS 链接。
@@ -369,6 +376,7 @@ curl "http://localhost:5000/api/rss/category/1"
 | `GET` | `/api/rss/{fakeid}/history` | 获取单个公众号历史文章 RSS |
 | `GET` | `/api/rss/all` | 获取所有订阅的聚合 RSS |
 | `GET` | `/api/rss/category/{category_id}` | 获取分类聚合 RSS |
+| `GET` | `/api/rss/category/{category_id}/today` | 导出分类今日文章，按公众号分组 |
 | `GET` | `/api/rss/export?format=opml&scope=categories` | 导出分类聚合 RSS 列表 |
 | `POST` | `/api/rss/poll` | 手动触发轮询 |
 | `GET` | `/api/rss/status` | 轮询器状态 |

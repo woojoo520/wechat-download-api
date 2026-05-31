@@ -12,12 +12,14 @@ RSS 订阅路由
 import csv
 import io
 import os
+import re
 import time
 import logging
 from datetime import datetime, timezone
 from html import escape as html_escape
-from typing import Optional
+from typing import Dict, List, Optional
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
@@ -35,6 +37,10 @@ from utils.rss_streaming import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_EXPORT_TIMEZONE = "Asia/Shanghai"
+UNKNOWN_ACCOUNT_NAME = "未知公众号"
+TITLE_PREFIX_RE = re.compile(r"^\[([^\]]+)\]\s*(.*)$")
+
 
 def get_base_url(request: Request) -> str:
     """
@@ -51,6 +57,40 @@ def get_base_url(request: Request) -> str:
     host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host", "localhost:5000")
     
     return f"{proto}://{host}"
+
+
+def _get_zoneinfo(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        raise HTTPException(status_code=422, detail=f"无效时区: {timezone_name}")
+
+
+def _target_date_string(date_value: Optional[str], timezone_name: str) -> str:
+    if date_value:
+        try:
+            datetime.strptime(date_value, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="date 必须是 YYYY-MM-DD 格式")
+        return date_value
+    return datetime.now(_get_zoneinfo(timezone_name)).strftime("%Y-%m-%d")
+
+
+def _article_local_date(publish_time: int, timezone_name: str) -> str:
+    return (
+        datetime.fromtimestamp(publish_time, tz=timezone.utc)
+        .astimezone(_get_zoneinfo(timezone_name))
+        .strftime("%Y-%m-%d")
+    )
+
+
+def _split_account_and_title(title: str, fallback_account: str = "") -> tuple[str, str]:
+    match = TITLE_PREFIX_RE.match(title or "")
+    if match:
+        account = match.group(1).strip() or UNKNOWN_ACCOUNT_NAME
+        clean_title = match.group(2).strip() or title
+        return account, clean_title
+    return fallback_account or UNKNOWN_ACCOUNT_NAME, title or ""
 
 router = APIRouter()
 
@@ -281,6 +321,51 @@ async def get_category_rss_feed(
         media_type="application/rss+xml; charset=utf-8",
         headers={"Cache-Control": "public, max-age=600"},
     )
+
+
+@router.get("/rss/category/{category_id}/today", summary="导出分类今日文章")
+async def export_category_today_articles(
+    category_id: int,
+    date: Optional[str] = Query(None, regex=r"^\d{4}-\d{2}-\d{2}$", description="目标日期，格式 YYYY-MM-DD；默认按 timezone 取今天"),
+    timezone_name: str = Query(DEFAULT_EXPORT_TIMEZONE, alias="timezone", description="日期过滤时区"),
+    limit: int = Query(RSS_CATEGORY_DEFAULT, ge=1, le=RSS_CATEGORY_MAX, description="文章数量上限"),
+) -> Dict[str, List[dict]]:
+    """
+    导出指定分类在目标日期更新的文章，按公众号名称分组。
+
+    返回格式:
+    {
+      "公众号名称": [
+        {"title": "文章标题", "link": "文章链接"}
+      ]
+    }
+    """
+    category = rss_store.get_category(category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="分类不存在")
+
+    target_date = _target_date_string(date, timezone_name)
+    subs = rss_store.get_subscriptions_by_category(category_id)
+    nickname_map = {s["fakeid"]: s.get("nickname") or s["fakeid"] for s in subs}
+    articles = rss_store.get_articles_by_category(category_id, limit=limit) if subs else []
+
+    grouped: Dict[str, List[dict]] = {}
+    for article in articles:
+        publish_time = article.get("publish_time")
+        if not publish_time:
+            continue
+        if _article_local_date(publish_time, timezone_name) != target_date:
+            continue
+
+        fakeid = article.get("fakeid", "")
+        fallback_account = nickname_map.get(fakeid, fakeid)
+        account, title = _split_account_and_title(article.get("title", ""), fallback_account)
+        grouped.setdefault(account, []).append({
+            "title": title,
+            "link": article.get("link", ""),
+        })
+
+    return grouped
 
 
 # ── 导出 ─────────────────────────────────────────────────
