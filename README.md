@@ -322,14 +322,16 @@ curl "http://localhost:5000/api/public/articles/search?fakeid=YOUR_FAKEID&query=
 
 `GET /api/rss/category/{category_id}` — 获取指定分类的聚合 RSS 2.0 订阅源
 
-`GET /api/rss/category/{category_id}/today` — 导出指定分类今日更新文章，按公众号分组返回 JSON
+`GET /api/rss/category/{category_id}/articles` — 导出指定分类文章，按公众号分组返回 JSON
+
+`GET /api/rss/category/{category_id}/today` — 导出指定分类今日文章，是 `articles?date=今天` 的快捷入口
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `fakeid` | string（路径） | 是 | 公众号 FakeID |
 | `category_id` | int（路径） | 是 | 分类 ID |
 | `limit` | int（查询） | 否 | 返回文章数量上限 |
-| `date` | string（查询） | 否 | 导出目标日期，格式 `YYYY-MM-DD`，默认按时区取今天 |
+| `date` | string（查询） | 否 | 导出目标日期，格式 `YYYY-MM-DD`；仅 `/articles` 使用，不传则不按日期过滤 |
 | `timezone` | string（查询） | 否 | 日期过滤时区，默认 `Asia/Shanghai` |
 
 使用方式：
@@ -353,7 +355,13 @@ curl "http://localhost:5000/api/rss/MzA1MjM1ODk2MA=="
 # 5. 获取分类聚合 RSS 源
 curl "http://localhost:5000/api/rss/category/1"
 
-# 6. 导出分类今日文章，按公众号名称分组
+# 6. 导出分类文章，按公众号名称分组
+curl "http://localhost:5000/api/rss/category/1/articles"
+
+# 7. 导出分类指定日期文章，按公众号名称分组
+curl "http://localhost:5000/api/rss/category/1/articles?date=2026-05-31&timezone=Asia/Shanghai"
+
+# 8. 导出分类今日文章，按公众号名称分组
 curl "http://localhost:5000/api/rss/category/1/today"
 ```
 
@@ -376,7 +384,8 @@ curl "http://localhost:5000/api/rss/category/1/today"
 | `GET` | `/api/rss/{fakeid}/history` | 获取单个公众号历史文章 RSS |
 | `GET` | `/api/rss/all` | 获取所有订阅的聚合 RSS |
 | `GET` | `/api/rss/category/{category_id}` | 获取分类聚合 RSS |
-| `GET` | `/api/rss/category/{category_id}/today` | 导出分类今日文章，按公众号分组 |
+| `GET` | `/api/rss/category/{category_id}/articles` | 导出分类文章，按公众号分组；可选 `date` 过滤 |
+| `GET` | `/api/rss/category/{category_id}/today` | 导出分类今日文章，按公众号分组快捷入口 |
 | `GET` | `/api/rss/export?format=opml&scope=categories` | 导出分类聚合 RSS 列表 |
 | `POST` | `/api/rss/poll` | 手动触发轮询 |
 | `GET` | `/api/rss/status` | 轮询器状态 |
