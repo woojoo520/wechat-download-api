@@ -320,10 +320,13 @@ curl "http://localhost:5000/api/public/articles/search?fakeid=YOUR_FAKEID&query=
 
 `GET /api/rss/{fakeid}` — 获取指定公众号的 RSS 2.0 订阅源
 
+`GET /api/rss/category/{category_id}` — 获取指定分类的聚合 RSS 2.0 订阅源
+
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `fakeid` | string（路径） | 是 | 公众号 FakeID |
-| `limit` | int（查询） | 否 | 返回文章数量上限，默认 `20` |
+| `category_id` | int（路径） | 是 | 分类 ID |
+| `limit` | int（查询） | 否 | 返回文章数量上限 |
 
 使用方式：
 
@@ -340,11 +343,14 @@ curl -X POST http://localhost:5000/api/rss/subscribe \
 # 3. 手动触发一次轮询（立即拉取文章）
 curl -X POST http://localhost:5000/api/rss/poll
 
-# 4. 获取 RSS 源（把这个地址添加到 RSS 阅读器）
+# 4. 获取单个公众号 RSS 源（把这个地址添加到 RSS 阅读器）
 curl "http://localhost:5000/api/rss/MzA1MjM1ODk2MA=="
+
+# 5. 获取分类聚合 RSS 源
+curl "http://localhost:5000/api/rss/category/1"
 ```
 
-也可以通过管理面板的 **RSS 订阅** 页面可视化管理，搜索公众号一键订阅并复制 RSS 地址。
+也可以通过管理面板的 **RSS 订阅** 页面可视化管理，搜索公众号一键订阅并复制 RSS 地址；在 **分类管理** 页面创建分类后，每个分类都会生成独立的聚合 RSS 链接。
 
 > **关于 RSS 内容**: RSS 源包含**完整文章内容**（图文混排），您可以直接在 RSS 阅读器中阅读全文。
 >
@@ -359,6 +365,11 @@ curl "http://localhost:5000/api/rss/MzA1MjM1ODk2MA=="
 | `POST` | `/api/rss/subscribe` | 添加 RSS 订阅 |
 | `DELETE` | `/api/rss/subscribe/{fakeid}` | 取消 RSS 订阅 |
 | `GET` | `/api/rss/subscriptions` | 获取订阅列表 |
+| `GET` | `/api/rss/{fakeid}` | 获取单个公众号 RSS |
+| `GET` | `/api/rss/{fakeid}/history` | 获取单个公众号历史文章 RSS |
+| `GET` | `/api/rss/all` | 获取所有订阅的聚合 RSS |
+| `GET` | `/api/rss/category/{category_id}` | 获取分类聚合 RSS |
+| `GET` | `/api/rss/export?format=opml&scope=categories` | 导出分类聚合 RSS 列表 |
 | `POST` | `/api/rss/poll` | 手动触发轮询 |
 | `GET` | `/api/rss/status` | 轮询器状态 |
 

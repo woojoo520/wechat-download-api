@@ -92,3 +92,6 @@ CHANGELOG_*.md
 HISTORICAL_*.md
 OPENSOURCE_AUDIT_*.md
 VERIFY_*.md
+
+
+docker-compose.yml

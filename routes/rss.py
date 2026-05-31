@@ -253,22 +253,61 @@ async def get_aggregated_rss_feed(
     )
 
 
+@router.get("/rss/category/{category_id}", summary="分类 RSS 订阅源",
+            response_class=Response)
+async def get_category_rss_feed(
+    category_id: int,
+    request: Request,
+    limit: int = Query(RSS_CATEGORY_DEFAULT, ge=1, le=RSS_CATEGORY_MAX, description="文章数量上限"),
+):
+    """
+    获取指定分类下所有订阅公众号的聚合 RSS 2.0 订阅源。
+
+    将此地址添加到 RSS 阅读器，即可查看该分类内所有公众号文章。
+    分类内订阅增减后自动生效，无需更换链接。
+    """
+    category = rss_store.get_category(category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="分类不存在")
+
+    subs = rss_store.get_subscriptions_by_category(category_id)
+    nickname_map = {s["fakeid"]: s.get("nickname") or s["fakeid"] for s in subs}
+    articles = rss_store.get_articles_by_category(category_id, limit=limit) if subs else []
+
+    base_url = get_base_url(request)
+
+    return StreamingResponse(
+        generate_category_rss_stream(category, articles, nickname_map, base_url),
+        media_type="application/rss+xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=600"},
+    )
+
+
 # ── 导出 ─────────────────────────────────────────────────
 
 @router.get("/rss/export", summary="导出订阅列表")
 async def export_subscriptions(
     request: Request,
     format: str = Query("csv", regex="^(csv|opml)$", description="导出格式: csv 或 opml"),
+    scope: str = Query("subscriptions", regex="^(subscriptions|categories)$", description="导出范围: subscriptions 或 categories"),
 ):
     """
-    导出当前订阅列表。
+    导出 RSS 列表。
 
-    - **csv**: 包含公众号名称、FakeID、RSS 地址、文章数、订阅时间
+    - **scope=subscriptions**: 导出单个公众号 RSS 列表
+    - **scope=categories**: 导出分类聚合 RSS 列表
+    - **csv**: 表格格式
     - **opml**: 标准 OPML 格式，可直接导入 RSS 阅读器
     """
-    subs = rss_store.list_subscriptions()
     base_url = get_base_url(request)
 
+    if scope == "categories":
+        categories = rss_store.list_categories()
+        if format == "opml":
+            return _build_category_opml_response(categories, base_url)
+        return _build_category_csv_response(categories, base_url)
+
+    subs = rss_store.list_subscriptions()
     if format == "opml":
         return _build_opml_response(subs, base_url)
     return _build_csv_response(subs, base_url)
@@ -295,6 +334,30 @@ def _build_csv_response(subs: list, base_url: str) -> Response:
         content=buf.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="wechat_rss_subscriptions.csv"'},
+    )
+
+
+def _build_category_csv_response(categories: list, base_url: str) -> Response:
+    buf = io.StringIO()
+    buf.write('\ufeff')
+    writer = csv.writer(buf)
+    writer.writerow(["Category", "RSS URL", "Subscriptions", "Created At"])
+    for c in categories:
+        rss_url = f"{base_url}/api/rss/category/{c['id']}"
+        created_at = c.get("created_at", 0)
+        created_date = datetime.fromtimestamp(
+            created_at, tz=timezone.utc
+        ).strftime("%Y-%m-%d") if created_at else ""
+        writer.writerow([
+            c.get("name") or c["id"],
+            rss_url,
+            c.get("subscription_count", 0),
+            created_date,
+        ])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="wechat_rss_categories.csv"'},
     )
 
 
@@ -328,6 +391,95 @@ def _build_opml_response(subs: list, base_url: str) -> Response:
         content=content,
         media_type="application/xml; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="wechat_rss_subscriptions.opml"'},
+    )
+
+
+def _build_category_opml_response(categories: list, base_url: str) -> Response:
+    opml = ET.Element("opml", version="2.0")
+    head = ET.SubElement(opml, "head")
+    ET.SubElement(head, "title").text = "WeChat RSS Categories"
+    ET.SubElement(head, "dateCreated").text = datetime.now(timezone.utc).strftime(
+        "%a, %d %b %Y %H:%M:%S +0000"
+    )
+
+    body = ET.SubElement(opml, "body")
+    group = ET.SubElement(body, "outline", text="WeChat RSS Categories", title="WeChat RSS Categories")
+
+    for c in categories:
+        name = c.get("name") or str(c["id"])
+        rss_url = f"{base_url}/api/rss/category/{c['id']}"
+        description = c.get("description") or f"{name} - WeChat RSS Category"
+        ET.SubElement(group, "outline", **{
+            "type": "rss",
+            "text": name,
+            "title": name,
+            "xmlUrl": rss_url,
+            "htmlUrl": base_url,
+            "description": description,
+        })
+
+    xml_str = ET.tostring(opml, encoding="unicode", xml_declaration=False)
+    content = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+
+    return Response(
+        content=content,
+        media_type="application/xml; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="wechat_rss_categories.opml"'},
+    )
+
+
+@router.get("/rss/{fakeid}/history", summary="公众号历史文章 RSS 订阅源",
+            response_class=Response)
+async def get_historical_rss_feed(
+    fakeid: str,
+    request: Request,
+    page: int = Query(1, ge=1, description="页码"),
+    limit: int = Query(RSS_HISTORICAL_DEFAULT, ge=1, le=RSS_HISTORICAL_MAX, description="每页文章数量"),
+):
+    """
+    获取指定公众号通过历史文章功能拉取的 RSS 2.0 归档源。
+    """
+    sub = rss_store.get_subscription(fakeid)
+    if not sub:
+        raise HTTPException(status_code=404, detail="订阅不存在")
+
+    total_count = rss_store.count_historical_articles(fakeid)
+    total_pages = max(1, (total_count + limit - 1) // limit)
+    if page > total_pages:
+        raise HTTPException(status_code=404, detail="页码超出范围")
+
+    offset = (page - 1) * limit
+    articles = rss_store.get_historical_articles(fakeid, limit=limit, offset=offset)
+    base_url = get_base_url(request)
+
+    return StreamingResponse(
+        generate_historical_rss_stream(fakeid, sub, articles, base_url, page, total_pages, total_count),
+        media_type="application/rss+xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@router.get("/rss/{fakeid}", summary="公众号 RSS 订阅源",
+            response_class=Response)
+async def get_single_rss_feed(
+    fakeid: str,
+    request: Request,
+    limit: int = Query(RSS_SINGLE_DEFAULT, ge=1, le=RSS_SINGLE_MAX, description="文章数量上限"),
+):
+    """
+    获取指定公众号的 RSS 2.0 订阅源。
+    """
+    sub = rss_store.get_subscription(fakeid)
+    if not sub:
+        raise HTTPException(status_code=404, detail="订阅不存在")
+
+    articles = rss_store.get_regular_articles(fakeid, limit=limit)
+    base_url = get_base_url(request)
+
+    return StreamingResponse(
+        generate_single_rss_stream(fakeid, sub, articles, base_url),
+        media_type="application/rss+xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=600"},
     )
 
 

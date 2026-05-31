@@ -423,9 +423,11 @@
                 <div style="display:flex;gap:var(--space-sm);position:relative;">
                     <div id="exportDropdown" style="position:relative;">
                         <button class="btn-sm" onclick="toggleExportMenu()">导出</button>
-                        <div id="exportMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--bg-primary);border:1px solid var(--border-base);border-radius:var(--radius-base);box-shadow:var(--shadow-base);z-index:10;min-width:120px;">
-                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('csv')">CSV</div>
-                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('opml')">OPML</div>
+                        <div id="exportMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--bg-primary);border:1px solid var(--border-base);border-radius:var(--radius-base);box-shadow:var(--shadow-base);z-index:10;min-width:150px;">
+                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('csv', 'subscriptions')">订阅 CSV</div>
+                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('opml', 'subscriptions')">订阅 OPML</div>
+                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('csv', 'categories')">分类 CSV</div>
+                            <div style="padding:8px 16px;cursor:pointer;font-size:var(--font-sm);transition:background var(--duration-fast);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''" onclick="doExport('opml', 'categories')">分类 OPML</div>
                         </div>
                     </div>
                 </div>
@@ -694,9 +696,9 @@
             menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
         }
 
-        function doExport(format) {
+        function doExport(format, scope) {
             document.getElementById('exportMenu').style.display = 'none';
-            window.location.href = '/api/rss/export?format=' + format;
+            window.location.href = '/api/rss/export?format=' + format + '&scope=' + (scope || 'subscriptions');
         }
 
         document.addEventListener('click', function(e) {
